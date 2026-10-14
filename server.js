@@ -3,6 +3,7 @@ import express from "express";
 import dotenv from "dotenv";
 import { nanoid } from "nanoid";
 import pool from "./db.js";
+import redisClient from "./redis.js";
 
 dotenv.config();
 
@@ -13,7 +14,9 @@ app.use(express.json());
 
 // Health check
 app.get("/", (req, res) => {
-  res.json({ message: "URL Shortener API is running!" });
+  res.json({
+    message: "URL Shortener API is running!",
+  });
 });
 
 // Create a short URL
@@ -64,12 +67,25 @@ app.post("/api/shorten", async (req, res) => {
   }
 });
 
-// Redirect to the original URL
+// Redirect to the original URL using Redis caching
 app.get("/:shortCode", async (req, res) => {
+  const { shortCode } = req.params;
+
   try {
+    // 1. Check Redis cache first
+    const cachedUrl = await redisClient.get(`url:${shortCode}`);
+
+    if (cachedUrl) {
+      console.log("Cache HIT:", shortCode);
+      return res.redirect(cachedUrl);
+    }
+
+    console.log("Cache MISS:", shortCode);
+
+    // 2. If not cached, query PostgreSQL
     const result = await pool.query(
       "SELECT long_url FROM urls WHERE short_code = $1",
-      [req.params.shortCode]
+      [shortCode]
     );
 
     if (result.rows.length === 0) {
@@ -78,7 +94,15 @@ app.get("/:shortCode", async (req, res) => {
       });
     }
 
-    return res.redirect(result.rows[0].long_url);
+    const longUrl = result.rows[0].long_url;
+
+    // 3. Cache the URL for one hour
+    await redisClient.set(`url:${shortCode}`, longUrl, {
+      EX: 3600,
+    });
+
+    // 4. Redirect to the original URL
+    return res.redirect(longUrl);
   } catch (error) {
     console.error("Error retrieving URL:", error.message);
 
@@ -88,6 +112,19 @@ app.get("/:shortCode", async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
-});
+// Connect to Redis, then start the server
+async function startServer() {
+  try {
+    await redisClient.connect();
+    console.log("Redis connected successfully!");
+
+    app.listen(PORT, () => {
+      console.log(`Server is running on http://localhost:${PORT}`);
+    });
+  } catch (error) {
+    console.error("Failed to start server:", error.message);
+    process.exit(1);
+  }
+}
+
+startServer();
