@@ -1,19 +1,23 @@
 # URL Shortener
 
-A URL shortener backend built with Node.js and Express.js. It converts long URLs into short, shareable links and redirects users to their original destinations.
+A URL shortener backend built with Node.js, Express.js, PostgreSQL, and Redis. It converts long URLs into short, shareable links and redirects users to their original destinations.
 
 ## Features
 
-- Generate short URLs using unique short codes
+- Generate short URLs using Nano ID
 - Redirect short URLs to their original destinations
+- Store URLs persistently in PostgreSQL
+- Cache frequently accessed URLs in Redis
+- Cache entries expire after one hour
 - Validate URLs and allow only HTTP and HTTPS protocols
 - Return appropriate error responses for invalid URLs and missing short codes
-- JSON-based REST API
 
 ## Tech Stack
 
 - **Runtime:** Node.js
 - **Backend:** Express.js
+- **Database:** PostgreSQL
+- **Caching:** Redis
 - **Short Code Generation:** Nano ID
 - **Configuration:** dotenv
 - **Development:** Nodemon
@@ -22,7 +26,7 @@ A URL shortener backend built with Node.js and Express.js. It converts long URLs
 
 ### Prerequisites
 
-Install [Node.js](https://nodejs.org/).
+Install Node.js, PostgreSQL, and Redis.
 
 ### Installation
 
@@ -39,7 +43,30 @@ Install dependencies:
 npm install
 ```
 
-Start the development server:
+Create a PostgreSQL database and the required table:
+
+```sql
+CREATE DATABASE url_shortener;
+```
+
+Connect to the `url_shortener` database and run:
+
+```sql
+CREATE TABLE urls (
+    id BIGSERIAL PRIMARY KEY,
+    short_code VARCHAR(20) UNIQUE NOT NULL,
+    long_url TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+Create a `.env` file in the project root:
+
+```dotenv
+DATABASE_URL=postgresql://localhost:5432/url_shortener
+```
+
+Start PostgreSQL and Redis, then start the development server:
 
 ```bash
 npm run dev
@@ -67,36 +94,27 @@ Request body:
 }
 ```
 
-Example response:
-
-```json
-{
-  "shortCode": "generated-code",
-  "shortUrl": "http://localhost:3000/generated-code",
-  "longUrl": "https://www.google.com/"
-}
-```
-
-The generated short code will vary with each request.
+The API returns a short code, the short URL, and the original URL.
 
 ### 3. Redirect to the Original URL
 
 `GET /:shortCode`
 
-Opening a valid short URL redirects the user to the original destination.
+Redirects to the original destination. Redis is checked first; if the URL isn't cached, PostgreSQL is queried and the result is cached for one hour.
 
 ## Current Limitations
 
-- URLs are stored in memory, so they are lost when the server restarts.
-- PostgreSQL persistence and Redis caching are planned improvements.
+- The server currently uses a local development setup.
+- Automated tests, click analytics, and production deployment have not yet been implemented.
+- Performance improvements have not yet been benchmarked.
 
 ## Future Improvements
 
-- PostgreSQL integration for persistent URL storage
-- Redis caching for faster redirects
-- Click analytics and usage tracking
-- Automated tests and API documentation
+- Add automated tests and API documentation
+- Implement click analytics and usage tracking
+- Deploy the application to a production environment
+- Benchmark redirect performance with and without Redis
 
 ## License
 
-This project is currently available without a specified license.
+No license has been specified yet.
