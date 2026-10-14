@@ -2,14 +2,12 @@
 import express from "express";
 import dotenv from "dotenv";
 import { nanoid } from "nanoid";
+import pool from "./db.js";
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-
-// Temporary storage; PostgreSQL comes later.
-const urls = new Map();
 
 app.use(express.json());
 
@@ -19,7 +17,7 @@ app.get("/", (req, res) => {
 });
 
 // Create a short URL
-app.post("/api/shorten", (req, res) => {
+app.post("/api/shorten", async (req, res) => {
   const { longUrl } = req.body;
 
   if (typeof longUrl !== "string") {
@@ -46,26 +44,48 @@ app.post("/api/shorten", (req, res) => {
 
   const shortCode = nanoid(7);
 
-  urls.set(shortCode, parsedUrl.toString());
+  try {
+    await pool.query(
+      "INSERT INTO urls (short_code, long_url) VALUES ($1, $2)",
+      [shortCode, parsedUrl.toString()]
+    );
 
-  res.status(201).json({
-    shortCode,
-    shortUrl: `http://localhost:${PORT}/${shortCode}`,
-    longUrl: parsedUrl.toString(),
-  });
-});
+    return res.status(201).json({
+      shortCode,
+      shortUrl: `http://localhost:${PORT}/${shortCode}`,
+      longUrl: parsedUrl.toString(),
+    });
+  } catch (error) {
+    console.error("Error saving URL:", error.message);
 
-// Redirect a short URL
-app.get("/:shortCode", (req, res) => {
-  const longUrl = urls.get(req.params.shortCode);
-
-  if (!longUrl) {
-    return res.status(404).json({
-      error: "Short URL not found.",
+    return res.status(500).json({
+      error: "Could not create short URL.",
     });
   }
+});
 
-  res.redirect(longUrl);
+// Redirect to the original URL
+app.get("/:shortCode", async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT long_url FROM urls WHERE short_code = $1",
+      [req.params.shortCode]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        error: "Short URL not found.",
+      });
+    }
+
+    return res.redirect(result.rows[0].long_url);
+  } catch (error) {
+    console.error("Error retrieving URL:", error.message);
+
+    return res.status(500).json({
+      error: "Could not retrieve short URL.",
+    });
+  }
 });
 
 app.listen(PORT, () => {

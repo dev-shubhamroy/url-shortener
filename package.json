@@ -11,11 +11,11 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "module",
   "dependencies": {
     "dotenv": "^18.0.7",
     "express": "^5.3.0",
-    "nanoid": "^5.1.16"
+    "nanoid": "^5.1.16",
+    "pg": "^8.23.1"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"
